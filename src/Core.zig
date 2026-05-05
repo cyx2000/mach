@@ -1,3 +1,48 @@
+//! mach.Core provides the ability to open windows, get input events, and ultimately render.
+//!
+//! # Units
+//!
+//! Firstly, Core does not expose the concept of monitors (because many platforms, such as mobile
+//! phones, consoles, VR devices, browsers, etc. do not have meaningful information about these
+//! available.) - instead we only expose the concept of a 'window' - a virtual surface which can be
+//! rendered to.
+//!
+//! Secondly, a window's framebuffer is always allocated at the native display resolution. We do not
+//! expose the ability to create a window framebuffer at a lesser resolution and allow the OS
+//! compositor to upscale the contents to the native resolution (because while on macOS/iOS this is
+//! available with your choice of nearest/bilinear/trilinear upscaling, on Windows only bilinear is
+//! available, and on Wayland this depends on the compositor and what extensions are available, and
+//! on Android this is usually bilinear but not guaranteed.) Instead, applications are responsible
+//! for scaling their render output appropriately. As a result, GPU scissor rectangles, viewports,
+//! etc. all operate in framebuffer coordinates.
+//!
+//! Each window exposes two notable scaling factors that you should be aware of when rendering:
+//!
+//! 1. `pixel_density`: this is the number of framebuffer texels per window pixel unit. For
+//!    example, on a high DPI monitor, creating an 800x600px window may result in a framebuffer
+//!    which is twice that size in native (physical) pixels. In this case, `width` and `height`
+//!    would be 800x600, `framebuffer_width` and `framebuffer_height` would be 1600x1200, and
+//!    `pixel_density` would be `2.0`. Fractional scaling is possible on some platforms.
+//! 2. `display_scale`: this is how much bigger the user wants their UI to be, specifically text and
+//!    UI elements which are sized relative to the size of text. This corresponds to e.g.
+//!    'Display Scale: 150%' in the Microsoft Windows settings, or 'Display: Larger Text' on macOS
+//!    for example.
+//!
+//! Both scaling factors may change dynamically at runtime, e.g. as a window is dragged from one
+//! display or another - or when a user updates their system preferences. Use the Resize and
+//! DisplayScaleChanged events to get notified of changes to pixel density and display scale.
+//!
+//! For example, suppose we wanted to render a green square on the framebuffer, taking up the same
+//! visual size as a single character of a 12pt font in other apps on their system. That square
+//! would take up `12pt * display_scale * pixel_density` texels in the framebuffer.
+//!
+//! If we then wanted to stretch a texture of an actual glyph over that square when we render, a
+//! glyph texture of `12pt * display_scale` would visually appear to be the right character, but on
+//! high DPI (e.g. Retina) displays it would appear blurry, while a glyph texture of
+//! `12pt * display_scale * pixel_density` would appear crisp on all displays.
+//!
+//! You can multiply window units by pixel_density to get framebuffer units, or divide framebuffer
+//! units by it to get window units.
 const std = @import("std");
 const builtin = @import("builtin");
 
@@ -19,16 +64,6 @@ pub const mach_systems = .{
 };
 
 /// Window objects managed by the platform.
-///
-/// Note: Core does not expose a concept of monitors, because it aims to support a broad range of
-/// platforms (mobile phones, consoles, browser, etc.) where such a concept does not make sense.
-///
-/// Note: Core does not expose a concept of 'requesting a window framebuffer at lower than native
-/// resolution' - on macOS/iOS this is possible with the ability to choose nearest/bilinear/trilinear
-/// upscaling, on Windows this is only possible with bilinear, on Android this is not possible, and
-/// on Wayland this is usually bilinear but depends on the compositor and available extensions. As
-/// a result, Core always renders at the native resolution and it is on your app to handle any
-/// scaled rendering it needs appropriately.
 windows: mach.Objects(
     // Set track_fields to true so that when these field values change, we know about it
     // and can update the platform windows.
@@ -54,6 +89,12 @@ windows: mach.Objects(
         /// Texture format of the framebuffer (read-only)
         framebuffer_format: gpu.Texture.Format = .bgra8_unorm,
 
+        /// Width of the window in virtual pixels
+        width: u32 = 1920 / 2,
+
+        /// Height of the window in virtual pixels
+        height: u32 = 1080 / 2,
+
         /// Width of the framebuffer in texels (read-only)
         /// Will be updated to reflect the actual framebuffer dimensions after window creation.
         framebuffer_width: u32 = 1920 / 2,
@@ -61,6 +102,18 @@ windows: mach.Objects(
         /// Height of the framebuffer in texels (read-only)
         /// Will be updated to reflect the actual framebuffer dimensions after window creation.
         framebuffer_height: u32 = 1080 / 2,
+
+        /// Number of framebuffer texels per window pixel unit (read-only). See top-level Core docs.
+        ///
+        /// Updated whenever the window is moved to a display with a different DPI. See also the
+        /// `.resize` event.
+        pixel_density: f32 = 1.0,
+
+        /// User-preferred UI scale factor (read-only). See top-level Core docs.
+        ///
+        /// Updated whenever the user changes their system display scale preferences. See also the
+        /// `.display_scale_changed` event.
+        display_scale: f32 = 1.0,
 
         /// Vertical sync mode, prevents screen tearing.
         vsync_mode: VSyncMode = .triple,
@@ -71,12 +124,6 @@ windows: mach.Objects(
         /// Cursor
         cursor_mode: CursorMode = .normal,
         cursor_shape: CursorShape = .arrow,
-
-        /// Width of the window in virtual pixels
-        width: u32 = 1920 / 2,
-
-        /// Height of the window in virtual pixels
-        height: u32 = 1080 / 2,
 
         /// Target frames per second
         refresh_rate: u32 = 0,
@@ -661,22 +708,27 @@ pub fn outOfMemory(core: *@This()) bool {
     return true;
 }
 
+/// Whether or not the given key button ID is currently pressed down or not.
 pub fn keyPressed(core: *@This(), key: KeyButtonID) bool {
     return core.input_state.keyPressed(key);
 }
 
+/// Whether or not the given key button ID is currently released (not pressed down).
 pub fn keyReleased(core: *@This(), key: KeyButtonID) bool {
     return core.input_state.keyReleased(key);
 }
 
+/// Whether or not the given mouse button ID is currently pressed down or not.
 pub fn mousePressed(core: *@This(), button: MouseButtonID) bool {
     return core.input_state.mousePressed(button);
 }
 
+/// Whether or not the given mouse button ID is currently released (not pressed down).
 pub fn mouseReleased(core: *@This(), button: MouseButtonID) bool {
     return core.input_state.mouseReleased(button);
 }
 
+/// The current mouse position.
 pub fn mousePosition(core: *@This()) Position {
     return core.input_state.mouse_position;
 }
@@ -773,19 +825,60 @@ pub const InputState = struct {
 };
 
 pub const Event = union(enum) {
+    /// Sent when a window opens.
     open: Open,
+
+    /// Sent when a window is closed.
     close: Close,
+
+    /// Sent when the window's display_scale changes (e.g. when the user changes their system
+    /// display scale preferences.)
+    display_scale_changed: DisplayScaleChanged,
+
+    /// Sent when a window or its framebuffer is resized, including when the pixel_density
+    /// changes (e.g. when the window is moved to a display with a different DPI.)
     resize: Resize,
+
+    /// Sent when a window gains focus.
     focus_gained: FocusGained,
+
+    /// Sent when a window loses focus.
     focus_lost: FocusLost,
+
+    /// Sent once when a key button is pressed down.
+    ///
+    /// Do not use this event for text input, use the `.char_input` event instead.
     key_press: Key,
+
+    /// Sent at the platform-specified rate when a key button is held down, and continues to be held
+    /// down.
+    ///
+    /// Do not use this event for text input, use the `.char_input` event instead.
     key_repeat: Key,
+
+    /// Sent once when a key button is released.
+    ///
+    /// Do not use this event for text input, use the `.char_input` event instead.
     key_release: Key,
+
+    /// Sent when the user is trying to input text.
     char_input: CharInput,
+
+    /// Sent when the mouse moves.
     mouse_motion: MouseMotion,
+
+    /// Sent once when a mouse button is pressed down.
     mouse_press: MouseButton,
+
+    /// Sent once when a mouse button is released.
     mouse_release: MouseButton,
+
+    /// Sent when the mouse wheel is scrolled.
     mouse_scroll: MouseScroll,
+
+    /// Sent when a user performs a zoom gesture.
+    ///
+    /// Only supported on macOS currently.
     zoom_gesture: ZoomGesture,
 
     pub const Key = struct {
@@ -801,14 +894,18 @@ pub const Event = union(enum) {
 
     pub const MouseMotion = struct {
         window_id: mach.ObjectID,
+
+        /// Mouse position, in window units, with sub-pixel precision when possible.
         pos: Position,
     };
 
     pub const MouseButton = struct {
         window_id: mach.ObjectID,
         button: MouseButtonID,
-        pos: Position,
         mods: KeyMods,
+
+        /// Mouse position, in window units, with sub-pixel precision when possible.
+        pos: Position,
     };
 
     pub const MouseScroll = struct {
@@ -819,7 +916,23 @@ pub const Event = union(enum) {
 
     pub const Resize = struct {
         window_id: mach.ObjectID,
-        size: Size,
+
+        /// New window size, in window units.
+        window_size: Size,
+
+        /// New framebuffer size, in framebuffer units.
+        framebuffer_size: Size,
+
+        /// New number of framebuffer texels per window unit. See top-level Core docs for what this
+        /// represents.
+        pixel_density: f32,
+    };
+
+    pub const DisplayScaleChanged = struct {
+        window_id: mach.ObjectID,
+
+        /// New display scale factor. See top-level Core docs for what this represents.
+        display_scale: f32,
     };
 
     pub const Open = struct {
@@ -845,16 +958,6 @@ pub const Event = union(enum) {
     };
 };
 
-pub const GesturePhase = enum {
-    none,
-    may_begin,
-    began,
-    changed,
-    stationary,
-    ended,
-    cancelled,
-};
-
 pub const MouseButtonID = enum {
     left,
     right,
@@ -868,6 +971,36 @@ pub const MouseButtonID = enum {
     pub const max = MouseButtonID.eight;
 };
 
+pub const KeyMods = packed struct(u16) {
+    shift: bool,
+    control: bool,
+    alt: bool,
+    super: bool,
+    caps_lock: bool,
+    num_lock: bool,
+    help: bool,
+    function: bool,
+    _padding: u8 = 0,
+};
+
+pub const GesturePhase = enum {
+    none,
+    may_begin,
+    began,
+    changed,
+    stationary,
+    ended,
+    cancelled,
+};
+
+/// A keyboard button ID, a virtual 'scancode' (not mapping to actual USB or PS/2 scancodes).
+///
+/// This is a physical button identifier, irrespective of keyboard layout. For example, `.w` is used
+/// to identify the key in the QWERTY keyboard layout "W" location, even if the keyboard is actually
+/// AZERTY layout or any other non-QWERTY layout.
+///
+/// This lets you e.g. map WASD keyboard movement to the same physical location on all keyboards,
+/// irrespective of layout.
 pub const KeyButtonID = enum {
     a,
     b,
@@ -1005,18 +1138,6 @@ pub const KeyButtonID = enum {
     unknown,
 
     pub const max = KeyButtonID.unknown;
-};
-
-pub const KeyMods = packed struct(u16) {
-    shift: bool,
-    control: bool,
-    alt: bool,
-    super: bool,
-    caps_lock: bool,
-    num_lock: bool,
-    help: bool,
-    function: bool,
-    _padding: u8 = 0,
 };
 
 pub const DisplayMode = enum {

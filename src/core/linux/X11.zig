@@ -689,13 +689,17 @@ fn processEvent(window_id: mach.ObjectID, event: *c.XEvent) void {
                 core_window.height = @intCast(event.xconfigure.height);
                 defer core_ptr.windows.setValueRaw(window_id, core_window);
 
+                const new_size = Core.Size{
+                    .width = core_window.width,
+                    .height = core_window.height,
+                };
                 core_ptr.pushEvent(.{
                     .resize = .{
-                        .size = Core.Size{
-                            .width = core_window.width,
-                            .height = core_window.height,
-                        },
                         .window_id = window_id,
+                        // TODO: X11 does not currently track pixel density properly
+                        .window_size = new_size,
+                        .framebuffer_size = new_size,
+                        .pixel_density = 1.0,
                     },
                 });
             }

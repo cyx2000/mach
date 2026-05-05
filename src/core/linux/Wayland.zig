@@ -1037,7 +1037,14 @@ const libdecor_listener = struct {
                 core_window.width = new_width;
 
                 setContentAreaOpaque(wl, Core.Size{ .width = core_window.width, .height = core_window.height });
-                core_ptr.pushEvent(.{ .resize = .{ .window_id = window_id, .size = .{ .height = core_window.height, .width = core_window.width } } });
+                // Wayland does not currently track pixel density separately.
+                const new_size = Core.Size{ .width = core_window.width, .height = core_window.height };
+                core_ptr.pushEvent(.{ .resize = .{
+                    .window_id = window_id,
+                    .window_size = new_size,
+                    .framebuffer_size = new_size,
+                    .pixel_density = 1.0,
+                } });
             }
         }
 

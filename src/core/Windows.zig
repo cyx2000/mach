@@ -300,7 +300,7 @@ fn getClientSize(hwnd: w.HWND) Size {
     return .{ .width = @intCast(rect.right), .height = @intCast(rect.bottom) };
 }
 
-fn getKeyboardModifiers() mach.Core.KeyMods {
+fn getKeyboardModifiers() KeyMods {
     return .{
         .shift = w.GetKeyState(@as(i32, @intFromEnum(w.VK_SHIFT))) < 0, //& 0x8000 == 0x8000,
         .control = w.GetKeyState(@as(i32, @intFromEnum(w.VK_CONTROL))) < 0, // & 0x8000 == 0x8000,
@@ -380,9 +380,13 @@ fn wndProc(hwnd: w.HWND, msg: u32, wParam: w.WPARAM, lParam: w.LPARAM) callconv(
             }
 
             if (change) {
+                const pixel_density: f32 = @as(f32, @floatFromInt(dpi)) / 96.0;
+                core_window.pixel_density = pixel_density;
                 core.pushEvent(.{ .resize = .{
                     .window_id = window_id,
-                    .size = .{ .width = client_size_pt.width, .height = client_size_pt.height },
+                    .window_size = .{ .width = client_size_pt.width, .height = client_size_pt.height },
+                    .framebuffer_size = .{ .width = client_size_px.width, .height = client_size_px.height },
+                    .pixel_density = pixel_density,
                 } });
                 core.windows.setValueRaw(window_id, core_window);
             }

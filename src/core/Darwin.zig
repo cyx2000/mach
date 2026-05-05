@@ -28,6 +28,7 @@ const PendingSwapChainUpdate = struct {
     height: u32,
     framebuffer_width: u32,
     framebuffer_height: u32,
+    pixel_density: f32,
     vsync_mode: Core.VSyncMode,
 };
 
@@ -220,6 +221,7 @@ const RenderLoop = struct {
                     core_window.height = update.height;
                     core_window.framebuffer_width = update.framebuffer_width;
                     core_window.framebuffer_height = update.framebuffer_height;
+                    core_window.pixel_density = update.pixel_density;
                     core_window.swap_chain_descriptor.width = update.framebuffer_width;
                     core_window.swap_chain_descriptor.height = update.framebuffer_height;
                     core_window.swap_chain_descriptor.present_mode = switch (update.vsync_mode) {
@@ -470,6 +472,7 @@ pub fn tick(core: *Core, core_mod: mach.Mod(Core), io: std.Io) !void {
                 .height = core_window.height,
                 .framebuffer_width = core_window.framebuffer_width,
                 .framebuffer_height = core_window.framebuffer_height,
+                .pixel_density = core_window.pixel_density,
                 .vsync_mode = core_window.vsync_mode,
             };
             core.windows.setRaw(window_id, .native, updated_native);
@@ -588,12 +591,13 @@ fn initWindow(
     );
     native_window.setReleasedWhenClosed(false);
 
-    const framebuffer_scale: f32 = @floatCast(native_window.backingScaleFactor());
+    const pixel_density: f32 = @floatCast(native_window.backingScaleFactor());
     const window_width: f32 = @floatFromInt(core_window.width);
     const window_height: f32 = @floatFromInt(core_window.height);
 
-    core_window.framebuffer_width = @intFromFloat(window_width * framebuffer_scale);
-    core_window.framebuffer_height = @intFromFloat(window_height * framebuffer_scale);
+    core_window.framebuffer_width = @intFromFloat(window_width * pixel_density);
+    core_window.framebuffer_height = @intFromFloat(window_height * pixel_density);
+    core_window.pixel_density = pixel_density;
 
     // initWithFrame is overridden in our MACHView, which creates a tracking area for mouse
     // tracking
@@ -744,9 +748,9 @@ const WindowDelegateCallbacks = struct {
 
         if (core_window.width == new_width and core_window.height == new_height) return;
 
-        const framebuffer_scale: f32 = @floatCast(native_window.backingScaleFactor());
-        const fb_width: u32 = @intFromFloat(@as(f32, @floatFromInt(new_width)) * framebuffer_scale);
-        const fb_height: u32 = @intFromFloat(@as(f32, @floatFromInt(new_height)) * framebuffer_scale);
+        const pixel_density: f32 = @floatCast(native_window.backingScaleFactor());
+        const fb_width: u32 = @intFromFloat(@as(f32, @floatFromInt(new_width)) * pixel_density);
+        const fb_height: u32 = @intFromFloat(@as(f32, @floatFromInt(new_height)) * pixel_density);
 
         // Queue a swap chain recreation for the render thread.
         var updated_native = native;
@@ -755,13 +759,16 @@ const WindowDelegateCallbacks = struct {
             .height = new_height,
             .framebuffer_width = fb_width,
             .framebuffer_height = fb_height,
+            .pixel_density = pixel_density,
             .vsync_mode = core_window.vsync_mode,
         };
         core.windows.setRaw(window_id, .native, updated_native);
 
         core.pushEvent(.{ .resize = .{
             .window_id = window_id,
-            .size = .{ .width = new_width, .height = new_height },
+            .window_size = .{ .width = new_width, .height = new_height },
+            .framebuffer_size = .{ .width = fb_width, .height = fb_height },
+            .pixel_density = pixel_density,
         } });
     }
 
@@ -917,8 +924,8 @@ fn machPhaseFromPhase(phase: objc.app_kit.EventPhase) Core.GesturePhase {
     };
 }
 
-fn machModifierFromModifierFlag(modifier_flag: usize) Core.KeyMods {
-    var modifier: Core.KeyMods = .{
+fn machModifierFromModifierFlag(modifier_flag: usize) KeyMods {
+    var modifier: KeyMods = .{
         .alt = false,
         .caps_lock = false,
         .control = false,
@@ -956,7 +963,7 @@ fn machModifierFromModifierFlag(modifier_flag: usize) Core.KeyMods {
     return modifier;
 }
 
-fn machKeyFromKeycode(keycode: c_ushort) Core.KeyButtonID {
+fn machKeyFromKeycode(keycode: c_ushort) Key {
     comptime var table: [256]Key = undefined;
     comptime for (&table, 1..) |*ptr, i| {
         ptr.* = switch (i) {
