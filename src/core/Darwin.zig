@@ -759,7 +759,7 @@ const WindowDelegateCallbacks = struct {
         };
         core.windows.setRaw(window_id, .native, updated_native);
 
-        core.pushEvent(.{ .window_resize = .{
+        core.pushEvent(.{ .resize = .{
             .window_id = window_id,
             .size = .{ .width = new_width, .height = new_height },
         } });

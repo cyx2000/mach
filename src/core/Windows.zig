@@ -380,7 +380,7 @@ fn wndProc(hwnd: w.HWND, msg: u32, wParam: w.WPARAM, lParam: w.LPARAM) callconv(
             }
 
             if (change) {
-                core.pushEvent(.{ .window_resize = .{
+                core.pushEvent(.{ .resize = .{
                     .window_id = window_id,
                     .size = .{ .width = client_size_pt.width, .height = client_size_pt.height },
                 } });

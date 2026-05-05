@@ -1037,7 +1037,7 @@ const libdecor_listener = struct {
                 core_window.width = new_width;
 
                 setContentAreaOpaque(wl, Core.Size{ .width = core_window.width, .height = core_window.height });
-                core_ptr.pushEvent(.{ .window_resize = .{ .window_id = window_id, .size = .{ .height = core_window.height, .width = core_window.width } } });
+                core_ptr.pushEvent(.{ .resize = .{ .window_id = window_id, .size = .{ .height = core_window.height, .width = core_window.width } } });
             }
         }
 

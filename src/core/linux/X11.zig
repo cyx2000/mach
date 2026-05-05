@@ -690,7 +690,7 @@ fn processEvent(window_id: mach.ObjectID, event: *c.XEvent) void {
                 defer core_ptr.windows.setValueRaw(window_id, core_window);
 
                 core_ptr.pushEvent(.{
-                    .window_resize = .{
+                    .resize = .{
                         .size = Core.Size{
                             .width = core_window.width,
                             .height = core_window.height,

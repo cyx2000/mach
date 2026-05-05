@@ -296,7 +296,7 @@ pub fn appTick(
                 }
             },
 
-            .window_open => |ev| {
+            .open => |ev| {
                 // Window opened: set it up if not the main window.
                 if (ev.window_id != app.window_id) {
                     app.setupWindow(core, sprite, text, ev.window_id) catch {};

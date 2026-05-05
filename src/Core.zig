@@ -293,7 +293,7 @@ pub fn initWindow(core: *Core, window_id: mach.ObjectID) !void {
     core_window.swap_chain = core_window.device.createSwapChain(core_window.surface, &core_window.swap_chain_descriptor);
 
     // Emit open event
-    core.pushEvent(.{ .window_open = .{ .window_id = window_id } });
+    core.pushEvent(.{ .open = .{ .window_id = window_id } });
 }
 
 /// Render all windows, must be called on the render thread.
@@ -791,8 +791,8 @@ pub const Event = union(enum) {
         xoffset: f32,
         yoffset: f32,
     },
-    window_resize: ResizeEvent,
-    window_open: struct {
+    resize: ResizeEvent,
+    open: struct {
         window_id: mach.ObjectID,
     },
     zoom_gesture: ZoomGestureEvent,
