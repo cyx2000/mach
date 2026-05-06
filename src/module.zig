@@ -76,7 +76,7 @@ fn validateSchedule(comptime entries: anytype) bool {
         }
 
         // Validate function name exists in module's mach_systems
-        if (!@hasField(ModuleFunctionName2(Module), @tagName(fn_name))) {
+        if (!@hasField(ModuleFunctionName(Module), @tagName(fn_name))) {
             @compileError("mach.schedule() entry references ." ++ @tagName(fn_name) ++ " but module " ++ @typeName(Module) ++ " has no such entry in `mach_systems`");
         }
     }
@@ -836,7 +836,7 @@ pub fn Mod(comptime M: type) type {
             r._run(r._ctx, fn_id);
         }
 
-        pub fn call(r: *const @This(), comptime f: ModuleFunctionName2(M)) void {
+        pub fn call(r: *const @This(), comptime f: ModuleFunctionName(M)) void {
             const fn_id = @field(r.id, @tagName(f));
             r.run(fn_id);
         }
@@ -860,18 +860,15 @@ pub fn ModFunctionIDs(comptime Module: type) type {
 }
 
 /// Enum describing all declarations for a given comptime-known module.
-// TODO: unify with ModuleFunctionName
-fn ModuleFunctionName2(comptime M: type) type {
+fn ModuleFunctionName(comptime M: type) type {
     validate(M);
     var enum_names: []const []const u8 = &.{};
-    const TagInt = if (M.mach_systems.len > 0) std.math.IntFittingRange(0, M.mach_systems.len - 1) else u0;
-    var enum_values: []const TagInt = &.{};
-    inline for (M.mach_systems, 0..) |fn_tag, i| {
+    inline for (M.mach_systems) |fn_tag| {
         // TODO: verify decls are Fn or mach.schedule() decl
         enum_names = enum_names ++ [_][]const u8{@tagName(fn_tag)};
-        enum_values = enum_values ++ [_]TagInt{@intCast(i)};
     }
-    return @Enum(TagInt, .exhaustive, enum_names[0..enum_names.len], enum_values[0..enum_values.len]);
+    const TagType = if (enum_names.len > 0) std.math.IntFittingRange(0, enum_names.len - 1) else u0;
+    return @Enum(TagType, .exhaustive, enum_names, &std.simd.iota(TagType, enum_names.len));
 }
 
 /// Enum describing all mach_tags for a given comptime-known module.
@@ -932,21 +929,6 @@ pub fn Modules(module_lists: anytype) type {
             object_name_id: u32,
         }) = .{},
         graph: Graph,
-
-        /// Enum describing all declarations for a given comptime-known module.
-        fn ModuleFunctionName(comptime module_name: ModuleName) type {
-            // No validate here — modules in `modules` were already validated by
-            // moduleTupleCollect when Modules(...) was defined.
-            const module = @field(module_types_by_name, @tagName(module_name));
-
-            var enum_names: []const []const u8 = &.{};
-            inline for (module.mach_systems) |fn_tag| {
-                // TODO: verify decls are Fn or mach.schedule() decl
-                enum_names = enum_names ++ [_][]const u8{@tagName(fn_tag)};
-            }
-            const TagType = if (enum_names.len > 0) std.math.IntFittingRange(0, enum_names.len - 1) else u0;
-            return @Enum(TagType, .exhaustive, enum_names, &std.simd.iota(TagType, enum_names.len));
-        }
 
         pub fn init(m: *@This(), allocator: std.mem.Allocator, io: std.Io) (std.mem.Allocator.Error || std.Thread.SpawnError)!void {
             m.* = .{
@@ -1017,7 +999,7 @@ pub fn Modules(module_lists: anytype) type {
 
                 pub const mod_name: ModuleName = module_name;
 
-                pub fn getFunction(fn_name: ModuleFunctionName(mod_name)) FunctionID {
+                pub fn getFunction(fn_name: ModuleFunctionName(module)) FunctionID {
                     return .{
                         .module_id = @intFromEnum(mod_name),
                         .fn_id = @intFromEnum(fn_name),
@@ -1026,7 +1008,7 @@ pub fn Modules(module_lists: anytype) type {
 
                 pub fn run(
                     m: *const @This(),
-                    comptime fn_name: ModuleFunctionName(module_name),
+                    comptime fn_name: ModuleFunctionName(module),
                 ) void {
                     const debug_name = @tagName(module_name) ++ "." ++ @tagName(fn_name);
                     if (!@hasField(module, @tagName(fn_name)) and !@hasDecl(module, @tagName(fn_name))) {
@@ -1042,10 +1024,10 @@ pub fn Modules(module_lists: anytype) type {
                         inline for (f) |schedule_entry| {
                             // TODO: unify with Modules(modules).get(M)
                             const callMod: Module(schedule_entry.@"0") = .{ .mods = m.mods, .modules = m.modules };
-                            if (!@hasField(ModuleFunctionName(@TypeOf(callMod).mod_name), @tagName(schedule_entry.@"1"))) {
+                            if (!@hasField(ModuleFunctionName(schedule_entry.@"0"), @tagName(schedule_entry.@"1"))) {
                                 @compileError("Module ." ++ @tagName(@TypeOf(callMod).mod_name) ++ " has no mach_systems entry '." ++ @tagName(schedule_entry.@"1") ++ "'");
                             }
-                            const callFn = @as(ModuleFunctionName(@TypeOf(callMod).mod_name), schedule_entry.@"1");
+                            const callFn = @as(ModuleFunctionName(schedule_entry.@"0"), schedule_entry.@"1");
                             callMod.run(callFn);
                         }
                         return;
@@ -1106,7 +1088,8 @@ pub fn Modules(module_lists: anytype) type {
             const module_name: ModuleName = @enumFromInt(f.module_id);
             switch (module_name) {
                 inline else => |mod_name| {
-                    const module_fn_name: ModuleFunctionName(mod_name) = @enumFromInt(f.fn_id);
+                    const M = @field(module_types_by_name, @tagName(mod_name));
+                    const module_fn_name: ModuleFunctionName(M) = @enumFromInt(f.fn_id);
                     const mod: Module(mod_name) = .{ .mods = &m.mods, .modules = m };
                     // Note: we don't need to validate the module here because it is derived from
                     // `modules`.
