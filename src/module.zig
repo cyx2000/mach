@@ -864,11 +864,31 @@ fn ModuleFunctionName(comptime M: type) type {
     validate(M);
     var enum_names: []const []const u8 = &.{};
     inline for (M.mach_systems) |fn_tag| {
-        // TODO: verify decls are Fn or mach.schedule() decl
         enum_names = enum_names ++ [_][]const u8{@tagName(fn_tag)};
     }
     const TagType = if (enum_names.len > 0) std.math.IntFittingRange(0, enum_names.len - 1) else u0;
     return @Enum(TagType, .exhaustive, enum_names, &std.simd.iota(TagType, enum_names.len));
+}
+
+/// Validates that every entry in `M.mach_systems` has a corresponding `pub fn <name>` or
+/// `pub const <name> = mach.schedule(...)` decl.
+///
+/// Do not call this in the path of mach.schedule() because it could result in circular evaluation
+/// of self-referential schedule decls.
+fn validateModuleSystemDecls(comptime M: type) void {
+    inline for (M.mach_systems) |fn_tag| {
+        const name = @tagName(fn_tag);
+        if (!@hasDecl(M, name)) {
+            @compileError("Module ." ++ @tagName(M.mach_module) ++ " declares mach_systems entry ." ++ name ++ " but has no `pub fn " ++ name ++ "` or `pub const " ++ name ++ " = mach.schedule(...)` decl");
+        }
+        const F = @TypeOf(@field(M, name));
+        const f_info = @typeInfo(F);
+        const is_fn = f_info == .@"fn";
+        const is_schedule = f_info == .@"struct" and f_info.@"struct".is_tuple;
+        if (!is_fn and !is_schedule) {
+            @compileError("Module ." ++ @tagName(M.mach_module) ++ " mach_systems entry ." ++ name ++ " must be a `pub fn` or `pub const " ++ name ++ " = mach.schedule(...)`, found: " ++ @typeName(F));
+        }
+    }
 }
 
 /// Enum describing all mach_tags for a given comptime-known module.
@@ -905,6 +925,7 @@ fn ModuleTagEnum(comptime M: type) type {
 pub fn Modules(module_lists: anytype) type {
     inline for (moduleTuple(module_lists)) |module| {
         validate(module);
+        validateModuleSystemDecls(module);
     }
     return struct {
         /// All modules.
