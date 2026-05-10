@@ -1,12 +1,13 @@
-//! Mach graphical editor and CLI tool
 const std = @import("std");
 const Io = std.Io;
 const build_info = @import("build_info");
+const init_cmd = @import("init.zig");
 
 const usage =
     \\Usage: mach [command] [options]
     \\
     \\Commands:
+    \\  init       Initialize a new Mach project in the current directory
     \\  version    Print Mach version information
     \\  help, -h   Print this help message
     \\
@@ -37,6 +38,12 @@ pub fn main(init: std.process.Init) !void {
         try stdout.print("mach {s}\n", .{build_info.mach_version});
         try stdout.print("zig  {s}\n", .{build_info.mach_zig_version});
         try stdout.flush();
+        return;
+    }
+    if (std.mem.eql(u8, cmd, "init")) {
+        try init_cmd.run(io, arena, args[2..], stdout, stderr);
+        try stdout.flush();
+        try stderr.flush();
         return;
     }
     if (std.mem.eql(u8, cmd, "help") or
