@@ -598,6 +598,20 @@ fn initWindow(
     core_window.framebuffer_width = @intFromFloat(window_width * pixel_density);
     core_window.framebuffer_height = @intFromFloat(window_height * pixel_density);
     core_window.pixel_density = pixel_density;
+    // macOS has no clean per-window "user wants bigger UI" API equivalent to Windows'
+    // GetDpiForWindow, so display_scale stays at 1.0.
+    //
+    // Caveat: macOS's "System Settings -> Displays -> Larger Text" picker does not surface to apps
+    // as a pixel_density change OR a per-window scale factor. All those modes report the same
+    // backingScaleFactor (2.0 on Retina); the only thing that changes is the screen's reported
+    // point dimensions. The OS then transparently stretches the same framebuffer to a larger
+    // on-screen physical size when the user picks "Larger Text". So an 800x600 window has identical
+    // pixel_density / framebuffer_width / framebuffer_height irrespective of which preference is
+    // chosen there.
+    //
+    // The "Accessibility -> Display -> Text Size" slider is also not exposed as a scale factor,
+    // instead that is on applications to respect using NSFont preferred-font-size APIs.
+    core_window.display_scale = 1.0;
 
     // initWithFrame is overridden in our MACHView, which creates a tracking area for mouse
     // tracking
@@ -672,6 +686,15 @@ fn initWindow(
 
         var shouldClose = bl(WindowDelegateCallbacks.windowShouldClose, win_ctx, null, null);
         delegate.setBlock_windowShouldClose(shouldClose.asBlock().copy());
+
+        var didChangeBacking = bl(WindowDelegateCallbacks.windowDidChangeBackingProperties, win_ctx, null, null);
+        delegate.setBlock_windowDidChangeBackingProperties(didChangeBacking.asBlock().copy());
+
+        var didBecomeKey = bl(WindowDelegateCallbacks.windowDidBecomeKey, win_ctx, null, null);
+        delegate.setBlock_windowDidBecomeKey(didBecomeKey.asBlock().copy());
+
+        var didResignKey = bl(WindowDelegateCallbacks.windowDidResignKey, win_ctx, null, null);
+        delegate.setBlock_windowDidResignKey(didResignKey.asBlock().copy());
     }
 
     // Store .native on the mach.Core window object.
@@ -731,45 +754,30 @@ const WindowDelegateCallbacks = struct {
     pub fn windowDidResize(block: *objc.foundation.BlockLiteral(*WindowContext)) callconv(.c) void {
         const core: *Core = block.context.core;
         const window_id = block.context.window_id;
+        handleResize(core, window_id);
+    }
 
-        core.windows.lock();
-        defer core.windows.unlock();
+    /// Called by AppKit when the window's backing scale factor changes (e.g. when the window is
+    /// dragged between displays of different DPI). in this case the framebuffer size has changed so
+    /// we need to consider it as a potential resize event.
+    pub fn windowDidChangeBackingProperties(block: *objc.foundation.BlockLiteral(*WindowContext)) callconv(.c) void {
+        const core: *Core = block.context.core;
+        const window_id = block.context.window_id;
+        handleResize(core, window_id);
+    }
 
-        const core_window = core.windows.getValue(window_id);
+    /// Called by AppKit when the window becomes key (focused).
+    pub fn windowDidBecomeKey(block: *objc.foundation.BlockLiteral(*WindowContext)) callconv(.c) void {
+        const core: *Core = block.context.core;
+        const window_id = block.context.window_id;
+        core.pushEvent(.{ .focus_gained = .{ .window_id = window_id } });
+    }
 
-        const native = core_window.native orelse return;
-        const native_window: *objc.app_kit.Window = native.window;
-
-        const frame = native_window.frame();
-        const content_rect = native_window.contentRectForFrameRect(frame);
-
-        const new_width: u32 = @intFromFloat(content_rect.size.width);
-        const new_height: u32 = @intFromFloat(content_rect.size.height);
-
-        if (core_window.width == new_width and core_window.height == new_height) return;
-
-        const pixel_density: f32 = @floatCast(native_window.backingScaleFactor());
-        const fb_width: u32 = @intFromFloat(@as(f32, @floatFromInt(new_width)) * pixel_density);
-        const fb_height: u32 = @intFromFloat(@as(f32, @floatFromInt(new_height)) * pixel_density);
-
-        // Queue a swap chain recreation for the render thread.
-        var updated_native = native;
-        updated_native.pending_swap_chain_update = .{
-            .width = new_width,
-            .height = new_height,
-            .framebuffer_width = fb_width,
-            .framebuffer_height = fb_height,
-            .pixel_density = pixel_density,
-            .vsync_mode = core_window.vsync_mode,
-        };
-        core.windows.setRaw(window_id, .native, updated_native);
-
-        core.pushEvent(.{ .resize = .{
-            .window_id = window_id,
-            .window_size = .{ .width = new_width, .height = new_height },
-            .framebuffer_size = .{ .width = fb_width, .height = fb_height },
-            .pixel_density = pixel_density,
-        } });
+    /// Called by AppKit when the window resigns key (loses focus).
+    pub fn windowDidResignKey(block: *objc.foundation.BlockLiteral(*WindowContext)) callconv(.c) void {
+        const core: *Core = block.context.core;
+        const window_id = block.context.window_id;
+        core.pushEvent(.{ .focus_lost = .{ .window_id = window_id } });
     }
 
     /// Called by AppKit when the user clicks the window's close button.
@@ -780,6 +788,50 @@ const WindowDelegateCallbacks = struct {
         return false;
     }
 };
+
+/// Handles a potential window resize, framebuffer resize, or DPI change.
+fn handleResize(core: *Core, window_id: mach.ObjectID) void {
+    core.windows.lock();
+    defer core.windows.unlock();
+
+    const core_window = core.windows.getValue(window_id);
+    const native = core_window.native orelse return;
+    const native_window: *objc.app_kit.Window = native.window;
+
+    // Determine the current width / height / pixel density of the window.
+    const frame = native_window.frame();
+    const content_rect = native_window.contentRectForFrameRect(frame);
+    const width: u32 = @intFromFloat(content_rect.size.width);
+    const height: u32 = @intFromFloat(content_rect.size.height);
+    const pixel_density: f32 = @floatCast(native_window.backingScaleFactor());
+
+    // Skip the work if nothing actually changed (handleResize can be called for many reasons.)
+    if (core_window.width == width and
+        core_window.height == height and
+        core_window.pixel_density == pixel_density) return;
+
+    const fb_width: u32 = @intFromFloat(@as(f32, @floatFromInt(width)) * pixel_density);
+    const fb_height: u32 = @intFromFloat(@as(f32, @floatFromInt(height)) * pixel_density);
+
+    // Queue a swap chain recreation for the render thread.
+    var updated_native = native;
+    updated_native.pending_swap_chain_update = .{
+        .width = width,
+        .height = height,
+        .framebuffer_width = fb_width,
+        .framebuffer_height = fb_height,
+        .pixel_density = pixel_density,
+        .vsync_mode = core_window.vsync_mode,
+    };
+    core.windows.setRaw(window_id, .native, updated_native);
+
+    core.pushEvent(.{ .resize = .{
+        .window_id = window_id,
+        .window_size = .{ .width = width, .height = height },
+        .framebuffer_size = .{ .width = fb_width, .height = fb_height },
+        .pixel_density = pixel_density,
+    } });
+}
 
 /// Callbacks for MACHView (NSView subclass), invoked by AppKit on the main thread for input events.
 const ViewCallbacks = struct {

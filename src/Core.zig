@@ -25,8 +25,7 @@
 //!    `pixel_density` would be `2.0`. Fractional scaling is possible on some platforms.
 //! 2. `display_scale`: this is how much bigger the user wants their UI to be, specifically text and
 //!    UI elements which are sized relative to the size of text. This corresponds to e.g.
-//!    'Display Scale: 150%' in the Microsoft Windows settings, or 'Display: Larger Text' on macOS
-//!    for example.
+//!    'Display Scale: 150%' in the Microsoft Windows settings.
 //!
 //! Both scaling factors may change dynamically at runtime, e.g. as a window is dragged from one
 //! display or another - or when a user updates their system preferences. Use the Resize and
@@ -113,6 +112,13 @@ windows: mach.Objects(
         ///
         /// Updated whenever the user changes their system display scale preferences. See also the
         /// `.display_scale_changed` event.
+        ///
+        /// * on Windows/Linux, this corresponds to the e.g. "Display Scale: 150%" in system
+        ///   settings menus.
+        /// * on macOS, this value is always 1.0 because macOS handles display scaling at the
+        ///   compositor level (no app-side render scaling needed beyond consideration for
+        ///   pixel_density)
+        ///
         display_scale: f32 = 1.0,
 
         /// Vertical sync mode, prevents screen tearing.
