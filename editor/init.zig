@@ -89,7 +89,6 @@ pub fn run(
     const zon_contents = try substituteZonTemplate(arena, build_zig_zon_template, .{
         .project_name = project_name,
         .fingerprint = fingerprint,
-        .mach_url = mach_url,
     });
     try writeFile(io, cwd, "build.zig.zon", zon_contents);
     try stdout.print("created build.zig.zon\n", .{});
@@ -149,7 +148,6 @@ fn writeFile(io: Io, dir: Io.Dir, sub_path: []const u8, contents: []const u8) !v
 const ZonSubstitutions = struct {
     project_name: []const u8,
     fingerprint: u64,
-    mach_url: []const u8,
 };
 
 /// Performs the small set of fixed substitutions on the embedded editor/init-project/build.zig.zon
@@ -161,11 +159,18 @@ fn substituteZonTemplate(
 ) ![]const u8 {
     const new_name = try std.fmt.allocPrint(arena, ".name = .{s},", .{subs.project_name});
     const new_fingerprint = try std.fmt.allocPrint(arena, ".fingerprint = 0x{x},", .{subs.fingerprint});
-    const new_mach_dep = try std.fmt.allocPrint(arena, ".url = \"{s}\",", .{subs.mach_url});
 
     const after_name = try replaceExpected(arena, template, ".name = .init_project,", new_name);
     const after_fp = try replaceExpected(arena, after_name, ".fingerprint = 0x72e87e5112345678,", new_fingerprint);
-    return try replaceExpected(arena, after_fp, ".path = \"../..\",", new_mach_dep);
+
+    // Drop the local .mach dependency block entirely. We will add it later.
+    const mach_dep_block =
+        \\        .mach = .{
+        \\            .path = "../..",
+        \\        },
+        \\
+    ;
+    return try replaceExpected(arena, after_fp, mach_dep_block, "");
 }
 
 /// Like `std.mem.replaceOwned`, but errors out if `needle` does not appear exactly once in
