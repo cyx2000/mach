@@ -21,6 +21,498 @@ const log = std.log.scoped(.mach);
 
 pub const Darwin = @This();
 
+// Force the MACH* Obj-C class metadata to be emitted into the binary at link time. Each
+// `class_def` is the opaque returned by `objc.objc.DefineClass(...)`; simply referencing it runs
+// the comptime side effects that export the class, ivars, and method IMPs.
+comptime {
+    _ = MACHAppDelegate.class_def;
+    _ = MACHWindowDelegate.class_def;
+    _ = MACHView.class_def;
+}
+
+/// NSObject subclass implementing NSApplicationDelegate. Holds a single block that's invoked
+/// when the application finishes launching; mach.Core's `run()` installs the block.
+const MACHAppDelegate = opaque {
+    const class_def = objc.objc.DefineClass(struct {
+        pub const class_name = "MACHAppDelegate";
+        pub const superclass = objc.foundation.ObjectInterface;
+
+        pub const Self = objc.objc.Self(class_name);
+
+        pub const implementation = objc.objc.implementation(class_name, struct {
+            _runBlock: objc.objc.Block(fn () void),
+        });
+
+        pub const methods = struct {
+            pub fn @"applicationDidFinishLaunching:"(self: *Self, _: ?*objc.app_kit.Notification) void {
+                _ = implementation._runBlock.invoke(self, .{});
+            }
+
+            pub fn @"applicationShouldTerminate:"(_: *Self, _: ?*objc.app_kit.Application) usize {
+                return 0; // NSTerminateCancel
+            }
+
+            pub fn @"applicationShouldTerminateAfterLastWindowClosed:"(_: *Self, _: ?*objc.app_kit.Application) bool {
+                return true;
+            }
+        };
+
+        pub const direct_methods = struct {
+            pub fn @"setRunBlock:"(self: *Self, block: ?*anyopaque) callconv(.c) void {
+                implementation._runBlock.set(self, block);
+            }
+        };
+    });
+
+    pub const InternalInfo = objc.objc.ExternClass(
+        "MACHAppDelegate",
+        @This(),
+        objc.foundation.ObjectInterface,
+        &.{objc.app_kit.ApplicationDelegate},
+    );
+    pub const as = InternalInfo.as;
+    pub const retain = InternalInfo.retain;
+    pub const release = InternalInfo.release;
+    pub const autorelease = InternalInfo.autorelease;
+    pub const new = InternalInfo.new;
+    pub const alloc = InternalInfo.alloc;
+    pub const allocInit = InternalInfo.allocInit;
+
+    pub fn setRunBlock(self: *@This(), block: *objc.foundation.Block(fn () void)) void {
+        setRunBlock_imp(self, block);
+    }
+    const setRunBlock_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn () void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHAppDelegate setRunBlock:]" },
+    );
+};
+
+/// NSObject subclass implementing NSWindowDelegate. Each window delegate event of interest is
+/// dispatched to a user-installed block (`setBlock_*`).
+const MACHWindowDelegate = opaque {
+    const class_def = objc.objc.DefineClass(struct {
+        pub const class_name = "MACHWindowDelegate";
+        pub const superclass = objc.foundation.ObjectInterface;
+
+        pub const Self = objc.objc.Self(class_name);
+
+        pub const implementation = objc.objc.implementation(class_name, struct {
+            _windowDidResize_block: objc.objc.Block(fn () void),
+            _windowShouldClose_block: objc.objc.Block(fn () bool),
+            _windowDidChangeBackingProperties_block: objc.objc.Block(fn () void),
+            _windowDidBecomeKey_block: objc.objc.Block(fn () void),
+            _windowDidResignKey_block: objc.objc.Block(fn () void),
+        });
+
+        pub const methods = struct {
+            pub fn @"windowDidResize:"(self: *Self, _: ?*objc.app_kit.Notification) void {
+                _ = implementation._windowDidResize_block.invoke(self, .{});
+            }
+
+            pub fn @"windowShouldClose:"(self: *Self, _: ?*objc.app_kit.Window) bool {
+                _ = implementation._windowShouldClose_block.invoke(self, .{});
+                return false;
+            }
+
+            pub fn @"windowDidChangeBackingProperties:"(self: *Self, _: ?*objc.app_kit.Notification) void {
+                _ = implementation._windowDidChangeBackingProperties_block.invoke(self, .{});
+            }
+
+            pub fn @"windowDidBecomeKey:"(self: *Self, _: ?*objc.app_kit.Notification) void {
+                _ = implementation._windowDidBecomeKey_block.invoke(self, .{});
+            }
+
+            pub fn @"windowDidResignKey:"(self: *Self, _: ?*objc.app_kit.Notification) void {
+                _ = implementation._windowDidResignKey_block.invoke(self, .{});
+            }
+
+            pub fn @"windowWillClose:"(_: *Self, _: ?*objc.app_kit.Notification) void {
+                // TODO
+            }
+        };
+    });
+
+    pub const InternalInfo = objc.objc.ExternClass(
+        "MACHWindowDelegate",
+        @This(),
+        objc.foundation.ObjectInterface,
+        &.{objc.app_kit.WindowDelegate},
+    );
+    pub const as = InternalInfo.as;
+    pub const retain = InternalInfo.retain;
+    pub const release = InternalInfo.release;
+    pub const autorelease = InternalInfo.autorelease;
+    pub const new = InternalInfo.new;
+    pub const alloc = InternalInfo.alloc;
+    pub const allocInit = InternalInfo.allocInit;
+
+    pub fn setBlock_windowDidResize(self: *@This(), block: *objc.foundation.Block(fn () void)) void {
+        setBlock_windowDidResize_imp(self, block);
+    }
+    const setBlock_windowDidResize_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn () void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHWindowDelegate setBlock_windowDidResize:]" },
+    );
+
+    pub fn setBlock_windowShouldClose(self: *@This(), block: *objc.foundation.Block(fn () bool)) void {
+        setBlock_windowShouldClose_imp(self, block);
+    }
+    const setBlock_windowShouldClose_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn () bool)) callconv(.c) void,
+        .{ .name = "\x01-[MACHWindowDelegate setBlock_windowShouldClose:]" },
+    );
+
+    pub fn setBlock_windowDidChangeBackingProperties(self: *@This(), block: *objc.foundation.Block(fn () void)) void {
+        setBlock_windowDidChangeBackingProperties_imp(self, block);
+    }
+    const setBlock_windowDidChangeBackingProperties_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn () void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHWindowDelegate setBlock_windowDidChangeBackingProperties:]" },
+    );
+
+    pub fn setBlock_windowDidBecomeKey(self: *@This(), block: *objc.foundation.Block(fn () void)) void {
+        setBlock_windowDidBecomeKey_imp(self, block);
+    }
+    const setBlock_windowDidBecomeKey_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn () void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHWindowDelegate setBlock_windowDidBecomeKey:]" },
+    );
+
+    pub fn setBlock_windowDidResignKey(self: *@This(), block: *objc.foundation.Block(fn () void)) void {
+        setBlock_windowDidResignKey_imp(self, block);
+    }
+    const setBlock_windowDidResignKey_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn () void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHWindowDelegate setBlock_windowDidResignKey:]" },
+    );
+};
+
+/// NSView subclass that:
+///  - Installs a tracking area on `initWithFrame:` so we receive mouseEntered/Exited and
+///    mouseMoved callbacks.
+///  - Forwards input events (key, mouse, scroll, magnify, insertText) to user-installed
+///    blocks via `setBlock_*` direct methods.
+///  - Optionally drives rendering off a CAMetalDisplayLink (`startDisplayLink` /
+///    `stopDisplayLink`), invoking the render block on every vsync.
+const MACHView = opaque {
+    const class_def = objc.objc.DefineClass(struct {
+        pub const class_name = "MACHView";
+        pub const superclass = objc.app_kit.View;
+
+        pub const Self = objc.objc.Self(class_name);
+
+        pub const implementation = objc.objc.implementation(class_name, struct {
+            _keyDown_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _keyUp_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _flagsChanged_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _mouseMoved_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _mouseDown_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _mouseUp_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _scrollWheel_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _magnify_block: objc.objc.Block(fn (?*objc.app_kit.Event) void),
+            _insertText_block: objc.objc.Block(fn (?*objc.app_kit.Event, u32) void),
+            _render_block: objc.objc.Block(fn (?*objc.quartz_core.MetalDrawable) void),
+            trackingArea: objc.objc.StrongObject("NSTrackingArea"),
+            _displayLink: objc.objc.StrongObject("CAMetalDisplayLink"),
+        });
+
+        pub const methods = struct {
+            // Overrides NSView's designated initializer to install a tracking
+            // area covering the view's visible rect, so we receive
+            // mouseEntered/Exited and mouseMoved callbacks.
+            pub fn @"initWithFrame:"(old_self: *Self, frame: objc.app_kit.Rect) ?*Self {
+                const super = objc.objc.superFn(objc.app_kit.View, "initWithFrame:", fn (*Self, objc.app_kit.Rect) ?*Self);
+                const self = super(old_self, frame) orelse return null;
+
+                const opts: objc.app_kit.TrackingAreaOptions =
+                    objc.app_kit.TrackingMouseEnteredAndExited |
+                    objc.app_kit.TrackingMouseMoved |
+                    objc.app_kit.TrackingActiveInActiveApp;
+                const rect = objc.app_kit.View.visibleRect(@ptrCast(self));
+                const tracking = objc.app_kit.TrackingArea.alloc().initWithRect_options_owner_userInfo(
+                    rect,
+                    opts,
+                    @ptrCast(self),
+                    null,
+                );
+                // Take ownership of the +1 retained tracking area into the
+                // strong ivar slot (no extra retain).
+                const slot = implementation.trackingArea.slot(self) orelse return self;
+                slot.* = @ptrCast(tracking);
+
+                objc.app_kit.View.addTrackingArea(@ptrCast(self), tracking);
+                return self;
+            }
+
+            pub fn canBecomeKeyView(_: *Self) bool {
+                return true;
+            }
+
+            pub fn acceptsFirstResponder(_: *Self) bool {
+                return true;
+            }
+
+            /// Prevent AppKit's default key handling (e.g. Esc exiting fullscreen)
+            /// from firing.
+            pub fn @"doCommandBySelector:"(_: *Self, _: objc.objc.SEL) void {}
+
+            pub fn @"keyDown:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._keyDown_block.invoke(self, .{event});
+                // [self interpretKeyEvents:[NSArray arrayWithObject:event]]
+                const arr = objc.foundation.Array(objc.app_kit.Event).arrayWithObject(event.?);
+                objc.app_kit.Responder.interpretKeyEvents(@ptrCast(self), @ptrCast(arr));
+            }
+
+            pub fn @"keyUp:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._keyUp_block.invoke(self, .{event});
+            }
+
+            pub fn @"flagsChanged:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._flagsChanged_block.invoke(self, .{event});
+            }
+
+            pub fn @"mouseMoved:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseMoved_block.invoke(self, .{event});
+            }
+
+            pub fn @"mouseDragged:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseMoved_block.invoke(self, .{event});
+            }
+
+            pub fn @"rightMouseDragged:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseMoved_block.invoke(self, .{event});
+            }
+
+            pub fn @"otherMouseDragged:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseMoved_block.invoke(self, .{event});
+            }
+
+            pub fn @"mouseDown:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseDown_block.invoke(self, .{event});
+            }
+
+            pub fn @"rightMouseDown:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseDown_block.invoke(self, .{event});
+            }
+
+            pub fn @"otherMouseDown:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseDown_block.invoke(self, .{event});
+            }
+
+            pub fn @"mouseUp:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseUp_block.invoke(self, .{event});
+            }
+
+            pub fn @"rightMouseUp:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseUp_block.invoke(self, .{event});
+            }
+
+            pub fn @"otherMouseUp:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._mouseUp_block.invoke(self, .{event});
+            }
+
+            pub fn @"scrollWheel:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._scrollWheel_block.invoke(self, .{event});
+            }
+
+            pub fn @"magnifyWithEvent:"(self: *Self, event: ?*objc.app_kit.Event) void {
+                _ = implementation._magnify_block.invoke(self, .{event});
+            }
+
+            pub fn @"insertText:"(self: *Self, string: ?*objc.foundation.String) void {
+                const event = objc.app_kit.Application.sharedApplication().currentEvent();
+
+                // Unwrap NSAttributedString → NSString if needed.
+                const characters: ?*objc.foundation.String = blk: {
+                    if (objc.objc.isKindOf(string, objc.foundation.AttributedString)) {
+                        const attr: *objc.foundation.AttributedString = @ptrCast(string.?);
+                        break :blk attr.string();
+                    }
+                    break :blk string;
+                };
+                const chars = characters orelse return;
+
+                var range: objc.foundation.Range = .init(0, chars.length());
+                while (range.length > 0) {
+                    var codepoint: u32 = 0;
+                    const got = chars.getBytes_maxLength_usedLength_encoding_options_range_remainingRange(
+                        @ptrCast(&codepoint),
+                        @sizeOf(u32),
+                        null,
+                        objc.foundation.UTF32StringEncoding,
+                        0,
+                        range,
+                        &range,
+                    );
+                    if (!got) break;
+                    // Skip Unicode "private use" function-key range that AppKit
+                    // synthesises for arrow keys etc.
+                    if (codepoint >= 0xf700 and codepoint <= 0xf7ff) continue;
+                    _ = implementation._insertText_block.invoke(self, .{ event, codepoint });
+                }
+            }
+
+            pub fn @"metalDisplayLink:needsUpdate:"(
+                self: *Self,
+                _: ?*objc.quartz_core.MetalDisplayLink, // unused
+                update: ?*objc.quartz_core.MetalDisplayLinkUpdate,
+            ) void {
+                const drawable = if (update) |u| u.drawable() else null;
+                _ = implementation._render_block.invoke(self, .{drawable});
+            }
+        };
+
+        pub const direct_methods = struct {
+            pub fn startDisplayLink(self: *Self) callconv(.c) bool {
+                if (implementation._displayLink.get(self) != null) return true;
+
+                const base_layer = objc.app_kit.View.layer(@ptrCast(self));
+                if (!objc.objc.isKindOf(base_layer, objc.quartz_core.MetalLayer)) return false;
+                const metal_layer: *objc.quartz_core.MetalLayer = @ptrCast(base_layer);
+
+                const link = objc.quartz_core.MetalDisplayLink.alloc().initWithMetalLayer(metal_layer);
+                // Take ownership of the +1 retained `link` directly into the
+                // ivar slot (no extra retain). Subsequent `set(self, …)` calls
+                // would balance through `objc_storeStrong`.
+                const slot = implementation._displayLink.slot(self) orelse return false;
+                slot.* = link;
+
+                link.setDelegate(@ptrCast(self));
+                link.addToRunLoop_forMode(objc.foundation.RunLoop.mainRunLoop(), objc.app_kit.NSRunLoopCommonModes);
+                return true;
+            }
+
+            pub fn stopDisplayLink(self: *Self) callconv(.c) void {
+                if (implementation._displayLink.get(self)) |link_ptr| {
+                    const link: *objc.quartz_core.MetalDisplayLink = @ptrCast(link_ptr);
+                    link.invalidate();
+                }
+                implementation._displayLink.set(self, null);
+            }
+        };
+    });
+
+    pub const InternalInfo = objc.objc.ExternClass("MACHView", @This(), objc.app_kit.View, &.{});
+    pub const as = InternalInfo.as;
+    pub const retain = InternalInfo.retain;
+    pub const release = InternalInfo.release;
+    pub const autorelease = InternalInfo.autorelease;
+    pub const new = InternalInfo.new;
+    pub const alloc = InternalInfo.alloc;
+    pub const allocInit = InternalInfo.allocInit;
+
+    pub fn initWithFrame(self_: *@This(), frameRect_: objc.app_kit.Rect) *@This() {
+        return objc.objc.msgSend(self_, "initWithFrame:", *@This(), .{frameRect_});
+    }
+
+    pub fn currentDrawable(self_: *@This()) ?*objc.quartz_core.MetalDrawable {
+        return objc.objc.msgSend(self_, "currentDrawable", ?*objc.quartz_core.MetalDrawable, .{});
+    }
+
+    pub fn layer(self_: *@This()) *objc.quartz_core.MetalLayer {
+        return objc.objc.msgSend(self_, "layer", *objc.quartz_core.MetalLayer, .{});
+    }
+    pub fn setLayer(self_: *@This(), layer_: *objc.quartz_core.MetalLayer) void {
+        return objc.objc.msgSend(self_, "setLayer:", void, .{layer_});
+    }
+
+    pub fn setBlock_render(self: *@This(), block: *objc.foundation.Block(fn (*objc.quartz_core.MetalDrawable) void)) void {
+        setBlock_render_imp(self, block);
+    }
+    const setBlock_render_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.quartz_core.MetalDrawable) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_render:]" },
+    );
+
+    pub fn setBlock_keyDown(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_keyDown_imp(self, block);
+    }
+    const setBlock_keyDown_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_keyDown:]" },
+    );
+
+    pub fn setBlock_insertText(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event, u32) void)) void {
+        setBlock_insertText_imp(self, block);
+    }
+    const setBlock_insertText_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event, u32) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_insertText:]" },
+    );
+
+    pub fn setBlock_keyUp(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_keyUp_imp(self, block);
+    }
+    const setBlock_keyUp_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_keyUp:]" },
+    );
+
+    pub fn setBlock_flagsChanged(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_flagsChanged_imp(self, block);
+    }
+    const setBlock_flagsChanged_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_flagsChanged:]" },
+    );
+
+    pub fn setBlock_magnify(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_magnify_imp(self, block);
+    }
+    const setBlock_magnify_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_magnify:]" },
+    );
+
+    pub fn setBlock_mouseMoved(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_mouseMoved_imp(self, block);
+    }
+    const setBlock_mouseMoved_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_mouseMoved:]" },
+    );
+
+    pub fn setBlock_mouseDown(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_mouseDown_imp(self, block);
+    }
+    const setBlock_mouseDown_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_mouseDown:]" },
+    );
+
+    pub fn setBlock_mouseUp(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_mouseUp_imp(self, block);
+    }
+    const setBlock_mouseUp_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_mouseUp:]" },
+    );
+
+    pub fn setBlock_scrollWheel(self: *@This(), block: *objc.foundation.Block(fn (*objc.app_kit.Event) void)) void {
+        setBlock_scrollWheel_imp(self, block);
+    }
+    const setBlock_scrollWheel_imp = @extern(
+        *const fn (*@This(), *objc.foundation.Block(fn (*objc.app_kit.Event) void)) callconv(.c) void,
+        .{ .name = "\x01-[MACHView setBlock_scrollWheel:]" },
+    );
+
+    pub fn startDisplayLink(self: *@This()) bool {
+        return startDisplayLink_imp(self);
+    }
+    const startDisplayLink_imp = @extern(
+        *const fn (*@This()) callconv(.c) bool,
+        .{ .name = "\x01-[MACHView startDisplayLink]" },
+    );
+
+    pub fn stopDisplayLink(self: *@This()) void {
+        stopDisplayLink_imp(self);
+    }
+    const stopDisplayLink_imp = @extern(
+        *const fn (*@This()) callconv(.c) void,
+        .{ .name = "\x01-[MACHView stopDisplayLink]" },
+    );
+};
+
 /// Queued resize or vsync-mode change, written by the main thread and consumed by render thread
 /// in renderThreadFn before each frame.
 const PendingSwapChainUpdate = struct {
@@ -39,7 +531,7 @@ const PendingSwapChainUpdate = struct {
 /// allocated.
 pub const Native = struct {
     window: *objc.app_kit.Window = undefined,
-    view: *objc.mach.View = undefined,
+    view: *MACHView = undefined,
     metal_descriptor: *gpu.Surface.DescriptorFromMetalLayer = undefined,
     display_link_ctx: ?*DisplayLinkContext = null,
 
@@ -81,7 +573,7 @@ const RenderLoop = struct {
 
     /// Registers displayLinkWake as the CAMetalDisplayLink callback for a window's view. Called
     /// during window creation and when vsync is re-enabled at runtime.
-    fn attachDisplayLink(ctx: *DisplayLinkContext, view: *objc.mach.View) void {
+    fn attachDisplayLink(ctx: *DisplayLinkContext, view: *MACHView) void {
         // Create an objc block that captures the DisplayLinkContext pointer, then register
         // it as the view's display link render block.
         var render_block = objc.foundation.stackBlockLiteral(displayLinkWake, ctx, null, null);
@@ -107,7 +599,7 @@ const RenderLoop = struct {
 
     /// Stops the CAMetalDisplayLink for a window's view. Called when vsync is disabled  or when a
     /// window is being destroyed.
-    fn detachDisplayLink(ctx: *DisplayLinkContext, view: *objc.mach.View) void {
+    fn detachDisplayLink(ctx: *DisplayLinkContext, view: *MACHView) void {
         // Stop the display link.
         view.stopDisplayLink();
 
@@ -338,7 +830,7 @@ pub fn run(comptime on_each_update_fn: anytype, args_tuple: std.meta.ArgsTuple(@
     // `NSApplicationMain()` and `UIApplicationMain()` never return, so there's no point in trying to add any kind of cleanup work here.
     const ns_app = objc.app_kit.Application.sharedApplication();
 
-    const delegate = objc.mach.AppDelegate.allocInit();
+    const delegate = MACHAppDelegate.allocInit();
     // AppDelegate.applicationDidFinishLaunching invokes this block synchronously once, kicking
     // off the very first main tick. Subsequent main ticks are driven by `wakeMainThread`.
     delegate.setRunBlock(dispatch_block);
@@ -615,7 +1107,7 @@ fn initWindow(
 
     // initWithFrame is overridden in our MACHView, which creates a tracking area for mouse
     // tracking
-    var view = objc.mach.View.allocInit();
+    var view = MACHView.allocInit();
     view = view.initWithFrame(rect);
     view.setLayer(@ptrCast(layer));
 
@@ -676,7 +1168,7 @@ fn initWindow(
     native_window.setTitle(string.initWithUTF8String(core_window.title));
 
     // NSWindowDelegate receives resize and close notifications from AppKit.
-    const delegate = objc.mach.WindowDelegate.allocInit();
+    const delegate = MACHWindowDelegate.allocInit();
     defer native_window.setDelegate(@ptrCast(delegate));
     {
         const bl = objc.foundation.stackBlockLiteral;
